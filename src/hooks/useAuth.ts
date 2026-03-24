@@ -28,6 +28,11 @@ async function fetchOrCreateProfile(user: User) {
     return created
   }
 
+  // Any other error (e.g. expired JWT, auth failure) — sign out so user re-authenticates
+  if (error) {
+    await supabase.auth.signOut()
+  }
+
   return null
 }
 
@@ -37,25 +42,36 @@ export function useAuthInit() {
   useEffect(() => {
     let mounted = true
 
+    // Safety: if nothing resolves within 8s, stop the spinner
+    const safetyTimer = setTimeout(() => {
+      if (mounted) { setProfile(null); setLoading(false) }
+    }, 8000)
+
     // 1. Get the current session immediately (handles page refresh)
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return
-      setSession(session)
-      if (session?.user) {
-        setLoading(true)
-        try {
-          const profile = await fetchOrCreateProfile(session.user)
-          if (mounted) setProfile(profile)
-        } catch {
-          // profile stays null — ProtectedRoute will handle this
-        } finally {
-          if (mounted) setLoading(false)
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        clearTimeout(safetyTimer)
+        if (!mounted) return
+        setSession(session)
+        if (session?.user) {
+          setLoading(true)
+          try {
+            const profile = await fetchOrCreateProfile(session.user)
+            if (mounted) setProfile(profile)
+          } catch {
+            // profile stays null — ProtectedRoute will handle this
+          } finally {
+            if (mounted) setLoading(false)
+          }
+        } else {
+          setProfile(null)
+          setLoading(false)
         }
-      } else {
-        setProfile(null)
-        setLoading(false)
-      }
-    })
+      })
+      .catch(() => {
+        clearTimeout(safetyTimer)
+        if (mounted) { setProfile(null); setLoading(false) }
+      })
 
     // 2. Watch for auth changes (sign-in / sign-out only; skip INITIAL_SESSION
     //    because getSession() above already handles it)
@@ -64,6 +80,9 @@ export function useAuthInit() {
         if (!mounted) return
         if (event === 'SIGNED_IN') {
           setSession(session)
+          // Skip re-fetching if we already have a profile for this user (e.g. tab switch / token refresh)
+          const existing = useAuthStore.getState().profile
+          if (existing?.id === session?.user?.id) return
           setLoading(true)
           try {
             const profile = await fetchOrCreateProfile(session!.user)
@@ -84,6 +103,7 @@ export function useAuthInit() {
 
     return () => {
       mounted = false
+      clearTimeout(safetyTimer)
       subscription.unsubscribe()
     }
   }, [setSession, setProfile, setLoading])

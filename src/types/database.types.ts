@@ -170,6 +170,54 @@ export interface Database {
           updated_at?: string
         }
       }
+      question_library: {
+        Row: {
+          id: string
+          type: QuestionType
+          prompt: string
+          points: number
+          explanation: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          type: QuestionType
+          prompt: string
+          points?: number
+          explanation?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          type?: QuestionType
+          prompt?: string
+          points?: number
+          explanation?: string | null
+          updated_at?: string
+        }
+      }
+      question_library_options: {
+        Row: {
+          id: string
+          question_library_id: string
+          text: string
+          is_correct: boolean
+          position: number
+        }
+        Insert: {
+          id?: string
+          question_library_id: string
+          text: string
+          is_correct?: boolean
+          position?: number
+        }
+        Update: {
+          text?: string
+          is_correct?: boolean
+          position?: number
+        }
+      }
       answer_options: {
         Row: {
           id: string

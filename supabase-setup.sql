@@ -75,6 +75,24 @@ CREATE TABLE IF NOT EXISTS public.answer_options (
   position    INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS public.question_library (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  type question_type NOT NULL,
+  prompt text NOT NULL,
+  points integer NOT NULL DEFAULT 1,
+  explanation text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.question_library_options (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  question_library_id uuid NOT NULL REFERENCES public.question_library(id) ON DELETE CASCADE,
+  text text NOT NULL,
+  is_correct boolean NOT NULL DEFAULT FALSE,
+  position integer NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS public.exam_assignments (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   exam_id     UUID NOT NULL REFERENCES public.exams(id) ON DELETE CASCADE,

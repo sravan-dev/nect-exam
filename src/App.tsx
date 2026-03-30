@@ -35,6 +35,7 @@ import AdminDashboardPage from '@/pages/admin/DashboardPage'
 import CoursesPage        from '@/pages/admin/CoursesPage'
 import CourseDetailPage   from '@/pages/admin/CourseDetailPage'
 import ExamBuilderPage    from '@/pages/admin/ExamBuilderPage'
+import QuestionLibraryPage from '@/pages/admin/QuestionLibraryPage'
 import ExamAssignPage     from '@/pages/admin/ExamAssignPage'
 import ExamResultsPage    from '@/pages/admin/ExamResultsPage'
 import GradePage          from '@/pages/admin/GradePage'
@@ -75,6 +76,7 @@ export default function App() {
                 <Route path="/admin/courses"                    element={<CoursesPage />} />
                 <Route path="/admin/courses/:courseId"          element={<CourseDetailPage />} />
                 <Route path="/admin/exams/:examId/build"        element={<ExamBuilderPage />} />
+                <Route path="/admin/question-library"           element={<QuestionLibraryPage />} />
                 <Route path="/admin/exams/:examId/assign"       element={<ExamAssignPage />} />
                 <Route path="/admin/exams/:examId/results"      element={<ExamResultsPage />} />
                 <Route path="/admin/attempts/:attemptId/grade"  element={<GradePage />} />

@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Loader2, GripVertical, Save, CheckCircle, Globe, Lock } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Loader2, GripVertical, Save, CheckCircle, Globe, Lock, Upload } from 'lucide-react'
+import JSZip from 'jszip'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
-import type { Exam, QuestionWithOptions, QuestionType } from '@/types/app.types'
+import type { Exam, QuestionLibraryItem, QuestionLibraryOption, QuestionWithOptions, QuestionType } from '@/types/app.types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -41,9 +42,16 @@ export default function ExamBuilderPage() {
   const { examId } = useParams<{ examId: string }>()
   const [exam, setExam] = useState<Exam | null>(null)
   const [questions, setQuestions] = useState<QuestionWithOptions[]>([])
+  const [libraryQuestions, setLibraryQuestions] = useState<QuestionLibraryItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [libraryLoading, setLibraryLoading] = useState(true)
   const [savingSettings, setSavingSettings] = useState(false)
   const [questionDialog, setQuestionDialog] = useState(false)
+  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false)
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>([])
+  const [importingDocx, setImportingDocx] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [newQType, setNewQType] = useState<QuestionType>('mcq')
   const [editingQ, setEditingQ] = useState<QuestionWithOptions | null>(null)
 
@@ -76,7 +84,243 @@ export default function ExamBuilderPage() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [examId])
+  const fetchLibrary = async () => {
+    setLibraryLoading(true)
+    const { data, error } = await supabase.from('question_library').select('*, question_library_options(*)').order('created_at', { ascending: false })
+    setLibraryLoading(false)
+    if (error) {
+      toast({ title: 'Failed to load question library', description: error.message, variant: 'destructive' })
+      return
+    }
+    setLibraryQuestions((data ?? []) as QuestionLibraryItem[])
+  }
+
+  const parseDocxToText = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer()
+    const zip = await JSZip.loadAsync(arrayBuffer)
+    const documentFile = zip.file('word/document.xml')
+    if (!documentFile) throw new Error('Invalid DOCX: missing document.xml')
+
+    const xml = await documentFile.async('string')
+    const dom = new DOMParser().parseFromString(xml, 'application/xml')
+    const paragraphs = Array.from(dom.getElementsByTagName('w:p'))
+
+    return paragraphs
+      .map((p) => {
+        const texts = Array.from(p.getElementsByTagName('w:t')).map((t) => t.textContent || '')
+        return texts.join('')
+      })
+      .join('\n')
+  }
+
+  interface ParsedQuestion { prompt: string; options: string[]; correctIndex: number | null }
+
+  const normalizeDocxLines = (rawLines: string[]): string[] => {
+    const out: string[] = []
+    for (const raw of rawLines) {
+      const line = raw.trim()
+      if (!line) continue
+
+      const isQuestion = /^\s*(?:Q\s*)?\d+\s*[\.\)]/.test(line)
+      const isChoice = /^\s*[A-Da-d]\s*[\.\)]/.test(line)
+      const isAnswerLabel = /^\s*(?:Correct Answer|Answer)\s*[:\-]?/i.test(line)
+
+      if (out.length === 0) {
+        out.push(line)
+        continue
+      }
+
+      const prev = out[out.length - 1]
+      const prevIsQuestion = /^\s*(?:Q\s*)?\d+\s*[\.\)]/.test(prev)
+      const prevIsChoice = /^\s*[A-Da-d]\s*[\.\)]/.test(prev)
+
+      if (!isQuestion && !isChoice && !isAnswerLabel && (prevIsChoice || prevIsQuestion)) {
+        out[out.length - 1] = `${prev} ${line}`
+      } else {
+        out.push(line)
+      }
+    }
+    return out
+  }
+
+  const parseQuestionsFromDocxText = (text: string): ParsedQuestion[] => {
+    const rawLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+    const lines = normalizeDocxLines(rawLines)
+
+    const questions: ParsedQuestion[] = []
+    let current: ParsedQuestion | null = null
+    let awaitingAnswer = false
+
+    const applyAnswerValue = (value: string) => {
+      if (!current) return
+      const answerValue = value.trim()
+      const letterMatch = answerValue.match(/^([A-Da-d])/)
+      if (letterMatch) {
+        const idx = 'ABCD'.indexOf(letterMatch[1].toUpperCase())
+        if (idx >= 0 && idx < current.options.length) {
+          current.correctIndex = idx
+          return
+        }
+      }
+      const idx = current.options.findIndex((opt) => opt.toLowerCase().includes(answerValue.toLowerCase()))
+      if (idx >= 0) current.correctIndex = idx
+    }
+
+    const consumeCurrent = () => {
+      if (!current) return
+      if (current.options.length > 0 && current.correctIndex === null) current.correctIndex = 0
+      questions.push(current)
+      current = null
+    }
+
+    for (const line of lines) {
+      const questionMatch = line.match(/^\s*(?:Q\s*)?(\d+)\s*[\.\)]\s*(.*)$/i)
+      const answerMatch = line.match(/^\s*(?:Correct Answer|Answer)\s*[:\-]?\s*(.*)$/i)
+      const choiceMatch = line.match(/^\s*([A-Da-d])\s*[\.\)]\s*(.*)$/i)
+
+      if (awaitingAnswer) {
+        applyAnswerValue(line)
+        awaitingAnswer = false
+        continue
+      }
+
+      if (questionMatch) {
+        if (current) consumeCurrent()
+        current = { prompt: questionMatch[2].trim(), options: [], correctIndex: null }
+      } else if (choiceMatch && current) {
+        current.options.push(choiceMatch[2].trim())
+      } else if (answerMatch && current) {
+        const answerValue = answerMatch[1].trim()
+        if (answerValue) {
+          applyAnswerValue(answerValue)
+        } else {
+          awaitingAnswer = true
+        }
+      } else if (current) {
+        if (current.options.length > 0) {
+          const idx = current.options.length - 1
+          current.options[idx] = `${current.options[idx]} ${line}`.trim()
+        } else {
+          current.prompt = `${current.prompt} ${line}`.trim()
+        }
+      } else {
+        current = { prompt: line, options: [], correctIndex: null }
+      }
+    }
+
+    if (current) consumeCurrent()
+    return questions
+  }
+
+  const importDocxQuestions = async (file: File) => {
+    if (!examId) return
+    setImportingDocx(true)
+    try {
+      const rawText = await parseDocxToText(file)
+      const parsedQuestions = parseQuestionsFromDocxText(rawText)
+      if (parsedQuestions.length === 0) {
+        toast({ title: 'No questions found', description: 'No recognizable questions were found in the uploaded document.', variant: 'destructive' })
+        return
+      }
+
+      setUploadProgress(5)
+      const totalQuestions = parsedQuestions.length
+      for (let idx = 0; idx < totalQuestions; idx += 1) {
+        const q = parsedQuestions[idx]
+        const questionType = q.options.length >= 2 ? 'mcq' as const : 'short_answer' as const
+
+        const { data: insertedQuestion, error: qErr } = await supabase.from('questions').insert({
+          exam_id: examId,
+          type: questionType,
+          prompt: q.prompt,
+          points: 1,
+          position: questions.length + idx,
+        }).select().single()
+
+        if (qErr || !insertedQuestion) {
+          console.error('Question insert failed', qErr)
+          continue
+        }
+
+        if (questionType === 'mcq' && q.options.length > 0) {
+          await supabase.from('answer_options').insert(
+            q.options.map((opt, i) => ({ question_id: insertedQuestion.id, text: opt, is_correct: i === (q.correctIndex ?? 0), position: i }))
+          )
+        }
+
+        setUploadProgress(Math.round(((idx + 1) / totalQuestions) * 100))
+      }
+
+      toast({ title: 'Import complete', description: `${parsedQuestions.length} questions imported`, variant: 'default' })
+      fetchData()
+    } catch (error) {
+      console.error(error)
+      toast({ title: 'Import error', description: `${(error as Error).message ?? 'Could not parse DOCX'}`, variant: 'destructive' })
+    } finally {
+      setImportingDocx(false)
+      setUploadProgress(0)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const onDocxFileChange = async (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0]
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      toast({ title: 'Invalid file type', description: 'Please upload a .docx file.', variant: 'destructive' })
+      return
+    }
+    await importDocxQuestions(file)
+  }
+
+  const importFromLibrary = async () => {
+    if (!examId) return
+    if (selectedLibraryIds.length === 0) {
+      toast({ title: 'No questions selected', variant: 'destructive' })
+      return
+    }
+
+    setLibraryDialogOpen(false)
+    setImportingDocx(true)
+
+    try {
+      let insertedCount = 0
+      for (const libQuestionId of selectedLibraryIds) {
+        const { data: libQuestion, error: qErr } = await supabase.from('question_library').select('*').eq('id', libQuestionId).single()
+        if (qErr || !libQuestion) continue
+
+        const { data: insertedQuestion, error: insertErr } = await supabase.from('questions').insert({
+          exam_id: examId,
+          type: libQuestion.type,
+          prompt: libQuestion.prompt,
+          points: libQuestion.points,
+          explanation: libQuestion.explanation,
+          position: questions.length + insertedCount,
+        }).select().single()
+
+        if (insertErr || !insertedQuestion) continue
+
+        const { data: libOptions } = await supabase.from('question_library_options').select('*').eq('question_library_id', libQuestionId).order('position')
+        if (libOptions && libOptions.length > 0) {
+          await supabase.from('answer_options').insert(
+            libOptions.map((o: QuestionLibraryOption, idx: number) => ({ question_id: insertedQuestion.id, text: o.text, is_correct: o.is_correct, position: idx }))
+          )
+        }
+
+        insertedCount += 1
+      }
+
+      toast({ title: 'Imported from library', description: `${insertedCount} questions added` })
+      fetchData()
+    } catch (error) {
+      toast({ title: 'Import from library failed', description: (error as Error).message, variant: 'destructive' })
+    } finally {
+      setImportingDocx(false)
+      setSelectedLibraryIds([])
+    }
+  }
+
+  useEffect(() => { fetchData(); fetchLibrary() }, [examId])
 
   const saveSettings = async (data: ExamFormData) => {
     if (!examId) return
@@ -249,11 +493,32 @@ export default function ExamBuilderPage() {
 
         {/* Questions Tab */}
         <TabsContent value="questions" className="mt-4 space-y-4">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button onClick={() => { setEditingQ(null); setQuestionDialog(true) }}>
               <Plus className="mr-2 h-4 w-4" /> Add Question
             </Button>
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importingDocx}>
+              <Upload className="mr-2 h-4 w-4" /> Import DOCX
+            </Button>
+            <Button variant="outline" onClick={() => setLibraryDialogOpen(true)} disabled={libraryLoading || importingDocx}>
+              <Upload className="mr-2 h-4 w-4" /> Import from Library
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".docx"
+              className="hidden"
+              onChange={onDocxFileChange}
+            />
           </div>
+          {uploadProgress > 0 && (
+            <div className="mt-3">
+              <div className="h-2 w-full rounded bg-slate-200 overflow-hidden">
+                <div className="h-2 rounded bg-blue-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+              </div>
+              <p className="mt-1 text-xs text-gray-500">Import progress: {uploadProgress}%</p>
+            </div>
+          )}
 
           {questions.length === 0 ? (
             <Card>
@@ -299,6 +564,45 @@ export default function ExamBuilderPage() {
               ))}
             </div>
           )}
+
+          <Dialog open={libraryDialogOpen} onOpenChange={(v) => !v && setLibraryDialogOpen(false)}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Select questions from library</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                {libraryLoading ? (
+                  <div className="p-8 text-center">Loading library...</div>
+                ) : libraryQuestions.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">No library questions available.</div>
+                ) : (
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {libraryQuestions.map((item) => (
+                      <label key={item.id} className="flex items-start gap-2 p-2 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedLibraryIds.includes(item.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedLibraryIds((prev) => [...prev, item.id])
+                            else setSelectedLibraryIds((prev) => prev.filter((x) => x !== item.id))
+                          }}
+                          className="mt-1"
+                        />
+                        <div>
+                          <p className="text-sm font-medium">{item.prompt}</p>
+                          <p className="text-xs text-gray-500">{item.type} • {item.points} pt</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setLibraryDialogOpen(false)}>Cancel</Button>
+                  <Button onClick={importFromLibrary} disabled={selectedLibraryIds.length === 0 || libraryLoading || importingDocx}>Import selected</Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
       </Tabs>
 

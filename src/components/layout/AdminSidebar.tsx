@@ -6,12 +6,13 @@ import { useNavigate } from 'react-router-dom'
 import { useAppSettings } from '@/contexts/AppSettingsContext'
 
 const links = [
-  { to: '/admin',          label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/admin/trades',   label: 'Trades',    icon: Layers },
-  { to: '/admin/courses',  label: 'Courses',   icon: BookOpen },
-  { to: '/admin/exams',    label: 'Exams',     icon: FileText },
-  { to: '/admin/students', label: 'Students',  icon: Users },
-  { to: '/admin/results',  label: 'Results',   icon: ClipboardList },
+  { to: '/admin',                  label: 'Dashboard',      icon: LayoutDashboard, end: true },
+  { to: '/admin/trades',           label: 'Trades',         icon: Layers },
+  { to: '/admin/courses',          label: 'Courses',        icon: BookOpen },
+  { to: '/admin/exams',            label: 'Exams',          icon: FileText },
+  { to: '/admin/question-library', label: 'Question Library', icon: FileText },
+  { to: '/admin/students',         label: 'Students',       icon: Users },
+  { to: '/admin/results',          label: 'Results',        icon: ClipboardList },
 ]
 
 export function AdminSidebar() {

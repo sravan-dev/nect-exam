@@ -21,6 +21,9 @@ export interface QuestionWithOptions extends Question {
   answer_options: AnswerOption[]
 }
 
+export type QuestionLibraryItem = Database['public']['Tables']['question_library']['Row']
+export type QuestionLibraryOption = Database['public']['Tables']['question_library_options']['Row']
+
 export interface ExamWithCourse extends Exam {
   courses: Course
 }

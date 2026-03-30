@@ -34,10 +34,10 @@ export default function AdminDashboardPage() {
   }, [])
 
   const statCards = [
-    { label: 'Courses',  value: stats.courses,  icon: BookOpen,       color: 'text-blue-600',  bg: 'bg-blue-50' },
-    { label: 'Exams',    value: stats.exams,    icon: FileText,       color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'Students', value: stats.students, icon: Users,          color: 'text-green-600',  bg: 'bg-green-50' },
-    { label: 'Attempts', value: stats.attempts, icon: ClipboardCheck, color: 'text-orange-600', bg: 'bg-orange-50' },
+    { label: 'Courses',  value: stats.courses,  icon: BookOpen,       color: 'text-blue-600',  bg: 'bg-blue-50',   to: '/admin/courses' },
+    { label: 'Exams',    value: stats.exams,    icon: FileText,       color: 'text-purple-600', bg: 'bg-purple-50', to: '/admin/exams' },
+    { label: 'Students', value: stats.students, icon: Users,          color: 'text-green-600',  bg: 'bg-green-50',  to: '/admin/students' },
+    { label: 'Attempts', value: stats.attempts, icon: ClipboardCheck, color: 'text-orange-600', bg: 'bg-orange-50', to: '/admin/results' },
   ]
 
   const statusColors: Record<string, string> = {
@@ -49,24 +49,31 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="p-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 text-sm mt-1">Overview of your exam platform</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-500 text-sm mt-1">Overview of your exam platform</p>
+        </div>
+        <Link to="/admin/settings" className="text-sm text-blue-600 hover:underline">
+          Go to options
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map(({ label, value, icon: Icon, color, bg }) => (
-          <Card key={label}>
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className={`p-3 rounded-xl ${bg}`}>
-                <Icon className={`h-6 w-6 ${color}`} />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{value}</p>
-                <p className="text-sm text-gray-500">{label}</p>
-              </div>
-            </CardContent>
-          </Card>
+        {statCards.map(({ label, value, icon: Icon, color, bg, to }) => (
+          <Link key={label} to={to} className="block rounded-lg hover:shadow-md transition-shadow">
+            <Card>
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className={`p-3 rounded-xl ${bg}`}>
+                  <Icon className={`h-6 w-6 ${color}`} />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{value}</p>
+                  <p className="text-sm text-gray-500">{label}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
 
@@ -82,12 +89,14 @@ export default function AdminDashboardPage() {
           ) : (
             <div className="space-y-2">
               {recentExams.map((exam) => (
-                <div key={exam.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 hover:bg-gray-100">
-                  <span className="text-sm font-medium text-gray-900">{exam.title}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[exam.status] ?? ''}`}>
-                    {exam.status}
-                  </span>
-                </div>
+                <Link key={exam.id} to={`/admin/exams/${exam.id}/build`} className="block">
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 hover:bg-gray-100">
+                    <span className="text-sm font-medium text-gray-900">{exam.title}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[exam.status] ?? ''}`}>
+                      {exam.status}
+                    </span>
+                  </div>
+                </Link>
               ))}
             </div>
           )}

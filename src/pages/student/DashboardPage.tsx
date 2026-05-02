@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BookOpen, CheckCircle, Clock, FileText } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import type { Exam, Attempt } from '@/types/app.types'
 import { Card, CardContent } from '@/components/ui/card'
+import { StudentDashboardSkeleton } from '@/components/skeletons'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { formatDate, getStatusColor } from '@/lib/utils'
@@ -19,15 +20,15 @@ export default function StudentDashboardPage() {
     if (!profile) { setLoading(false); return; }
     setLoading(true)
     ;(async () => {
-      try { await supabase.rpc('expire_past_exams') } catch { /* ignore */ }
+      try { await db.rpc('expire_past_exams') } catch { /* ignore */ }
       try {
         const [examRes, attRes] = await Promise.all([
-          supabase.from('exams')
+          db.from('exams')
             .select('*')
             .in('status', ['published', 'active'])
             .order('created_at', { ascending: false })
             .limit(6),
-          supabase.from('attempts')
+          db.from('attempts')
             .select('*')
             .eq('student_id', profile.id)
             .order('started_at', { ascending: false })
@@ -42,6 +43,8 @@ export default function StudentDashboardPage() {
   }, [profile])
 
   const completedCount = attempts.filter((a) => a.status !== 'in_progress').length
+
+  if (loading) return <StudentDashboardSkeleton />
 
   return (
     <div className="p-8 space-y-6">
@@ -80,9 +83,7 @@ export default function StudentDashboardPage() {
           <h2 className="text-base font-semibold text-gray-900">Available Exams</h2>
           <Link to="/student/exams" className="text-sm text-blue-600 hover:underline">View all</Link>
         </div>
-        {loading ? (
-          <p className="text-sm text-gray-400">Loading...</p>
-        ) : available.length === 0 ? (
+        {available.length === 0 ? (
           <Card><CardContent className="py-8 text-center text-gray-500 text-sm">No exams available right now</CardContent></Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

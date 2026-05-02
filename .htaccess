@@ -1,0 +1,22 @@
+# NECT Exam — Apache routing rules
+# api/ folder holds the PHP backend; React SPA files sit alongside this file
+
+Options -Indexes
+RewriteEngine On
+
+# Pass Authorization header through to PHP (required on XAMPP / cPanel)
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# Serve /uploads/* as static files — no rewriting
+RewriteRule ^uploads/ - [L]
+
+# Route API / auth / upload / health requests to api/api.php
+RewriteRule ^api/(.*)$    api/api.php [QSA,L]
+RewriteRule ^auth/(.*)$   api/api.php [QSA,L]
+RewriteRule ^upload$      api/api.php [QSA,L]
+RewriteRule ^health$      api/api.php [QSA,L]
+
+# SPA fallback — serve index.html for all remaining non-file requests
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L]

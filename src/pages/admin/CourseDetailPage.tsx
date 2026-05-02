@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Plus, ArrowLeft, FileText, Pencil, Trash2, Loader2 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import type { Course, Exam } from '@/types/app.types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -20,8 +20,8 @@ export default function CourseDetailPage() {
   useEffect(() => {
     if (!courseId) return
     Promise.all([
-      supabase.from('courses').select('*').eq('id', courseId).single(),
-      supabase.from('exams').select('*').eq('course_id', courseId).order('created_at', { ascending: false }),
+      db.from('courses').select('*').eq('id', courseId).single(),
+      db.from('exams').select('*').eq('course_id', courseId).order('created_at', { ascending: false }),
     ]).then(([courseRes, examsRes]) => {
       setCourse(courseRes.data)
       setExams(examsRes.data ?? [])
@@ -32,7 +32,7 @@ export default function CourseDetailPage() {
   const createExam = async () => {
     if (!courseId) return
     setCreating(true)
-    const { data, error } = await supabase.from('exams').insert({
+    const { data, error } = await db.from('exams').insert({
       course_id: courseId,
       title: 'Untitled Exam',
       status: 'draft',
@@ -48,7 +48,7 @@ export default function CourseDetailPage() {
 
   const deleteExam = async (id: string) => {
     if (!confirm('Delete this exam and all its questions?')) return
-    const { error } = await supabase.from('exams').delete().eq('id', id)
+    const { error } = await db.from('exams').delete().eq('id', id)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     setExams((e) => e.filter((x) => x.id !== id))
     toast({ title: 'Exam deleted' })

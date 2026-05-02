@@ -1,0 +1,2 @@
+# Allow direct access to uploaded files
+Options -Indexes

@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Loader2 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,7 +36,7 @@ export default function LoginPage() {
 
   const onSubmit = async (data: FormData) => {
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email: data.email, password: data.password })
+    const { error } = await db.auth.signInWithPassword({ email: data.email, password: data.password })
     setLoading(false)
     if (error) {
       toast({ title: 'Login failed', description: error.message, variant: 'destructive' })

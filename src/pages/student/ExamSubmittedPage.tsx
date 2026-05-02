@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { CheckCircle, XCircle, Clock, Trophy, Loader2 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import type { ResponseWithQuestion } from '@/types/app.types'
 import { Button } from '@/components/ui/button'
@@ -19,17 +19,16 @@ export default function ExamSubmittedPage() {
 
   useEffect(() => {
     if (!examId || !profile) return
-    supabase.from('attempts').select('id, score_pct, passed, time_spent_secs, status')
+    db.from('attempts').select('id, score_pct, passed, time_spent_secs, status')
       .eq('exam_id', examId).eq('student_id', profile.id).maybeSingle()
       .then(async ({ data: att }) => {
         setAttempt(att)
-        const { data: exam } = await supabase.from('exams').select('show_results').eq('id', examId).single()
+        const { data: exam } = await db.from('exams').select('show_results').eq('id', examId).single()
         setExamShowResults(exam?.show_results ?? true)
         if (att && exam?.show_results) {
-          const { data: resData } = await supabase.from('responses')
+          const { data: resData } = await db.from('responses')
             .select('*, questions(*, answer_options(*))')
             .eq('attempt_id', att.id)
-            .order('questions(position)')
           setResponses((resData ?? []) as ResponseWithQuestion[])
         }
         setLoading(false)

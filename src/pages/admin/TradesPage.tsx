@@ -4,8 +4,9 @@ import { Plus, Pencil, Trash2, Loader2, Layers, BookOpen, ChevronRight } from 'l
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import type { Trade } from '@/types/app.types'
+import { TradesPageSkeleton } from '@/components/skeletons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -49,14 +50,14 @@ export default function TradesPage() {
   const fetchTrades = async () => {
     setLoading(true)
     const [{ data: tradesData }, { data: coursesData }] = await Promise.all([
-      supabase.from('trades').select('*').order('name'),
-      supabase.from('courses').select('id, trade_id'),
+      db.from('trades').select('*').order('name'),
+      db.from('courses').select('id, trade_id'),
     ])
     const counts: Record<string, number> = {}
-    ;(coursesData ?? []).forEach((c) => {
+    ;(coursesData ?? []).forEach((c: { id: string; trade_id: string | null }) => {
       if (c.trade_id) counts[c.trade_id] = (counts[c.trade_id] ?? 0) + 1
     })
-    setTrades((tradesData ?? []).map((t) => ({ ...t, course_count: counts[t.id] ?? 0 })))
+    setTrades((tradesData ?? []).map((t: Trade) => ({ ...t, course_count: counts[t.id] ?? 0 })))
     setLoading(false)
   }
 
@@ -64,7 +65,7 @@ export default function TradesPage() {
 
   const onAdd = async (data: FormData) => {
     setSaving(true)
-    const { error } = await supabase.from('trades').insert(data)
+    const { error } = await db.from('trades').insert(data)
     setSaving(false)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     toast({ title: 'Trade created!' })
@@ -82,7 +83,7 @@ export default function TradesPage() {
   const onEdit = async (data: FormData) => {
     if (!editing) return
     setSaving(true)
-    const { error } = await supabase.from('trades').update(data).eq('id', editing.id)
+    const { error } = await db.from('trades').update(data).eq('id', editing.id)
     setSaving(false)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     toast({ title: 'Trade updated!' })
@@ -92,11 +93,13 @@ export default function TradesPage() {
 
   const deleteTrade = async (id: string) => {
     if (!confirm('Delete this trade? Courses under it will become uncategorised.')) return
-    const { error } = await supabase.from('trades').delete().eq('id', id)
+    const { error } = await db.from('trades').delete().eq('id', id)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     toast({ title: 'Trade deleted' })
     fetchTrades()
   }
+
+  if (loading) return <TradesPageSkeleton />
 
   return (
     <div className="p-8 space-y-6">

@@ -4,9 +4,10 @@ import { Plus, BookOpen, Trash2, Loader2, Pencil, Filter } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import type { Course, Trade } from '@/types/app.types'
+import { CoursesPageSkeleton } from '@/components/skeletons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -20,6 +21,7 @@ import { toast } from '@/hooks/useToast'
 const schema = z.object({
   title:       z.string().min(1, 'Title is required'),
   description: z.string().optional(),
+  duration:    z.string().optional(),
   trade_id:    z.string().optional(),
 })
 type FormData = z.infer<typeof schema>
@@ -55,12 +57,12 @@ export default function CoursesPage() {
   const fetchData = async () => {
     setLoading(true)
     const [{ data: tradesData }, { data: coursesData }] = await Promise.all([
-      supabase.from('trades').select('*').order('name'),
-      supabase.from('courses').select('*').order('created_at', { ascending: false }),
+      db.from('trades').select('*').order('name'),
+      db.from('courses').select('*').order('created_at', { ascending: false }),
     ])
     const tradeMap: Record<string, Trade> = {}
-    ;(tradesData ?? []).forEach((t) => { tradeMap[t.id] = t })
-    const merged = (coursesData ?? []).map((c) => ({
+    ;(tradesData ?? []).forEach((t: Trade) => { tradeMap[t.id] = t })
+    const merged = (coursesData ?? []).map((c: Course) => ({
       ...c,
       trade: c.trade_id ? tradeMap[c.trade_id] : undefined,
     }))
@@ -83,7 +85,7 @@ export default function CoursesPage() {
   const onAdd = async (data: FormData) => {
     if (!profile) return
     setSaving(true)
-    const { error } = await supabase.from('courses').insert({ ...data, admin_id: profile.id })
+    const { error } = await db.from('courses').insert({ ...data, admin_id: profile.id })
     setSaving(false)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     toast({ title: 'Course created!' })
@@ -93,14 +95,14 @@ export default function CoursesPage() {
 
   const openEdit = (c: Course) => {
     setEditing(c)
-    editForm.reset({ title: c.title, description: c.description ?? '', trade_id: c.trade_id ?? '' })
+    editForm.reset({ title: c.title, description: c.description ?? '', duration: c.duration ?? '', trade_id: c.trade_id ?? '' })
     setEditOpen(true)
   }
 
   const onEdit = async (data: FormData) => {
     if (!editing) return
     setSaving(true)
-    const { error } = await supabase.from('courses').update(data).eq('id', editing.id)
+    const { error } = await db.from('courses').update(data).eq('id', editing.id)
     setSaving(false)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     toast({ title: 'Course updated!' })
@@ -110,7 +112,7 @@ export default function CoursesPage() {
 
   const deleteCourse = async (id: string) => {
     if (!confirm('Delete this course and all its exams?')) return
-    const { error } = await supabase.from('courses').delete().eq('id', id)
+    const { error } = await db.from('courses').delete().eq('id', id)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     toast({ title: 'Course deleted' })
     setCourses((c) => c.filter((x) => x.id !== id))
@@ -121,6 +123,8 @@ export default function CoursesPage() {
     : courses.filter((c) => c.trade_id === tradeFilter)
 
   const activeTradeName = trades.find((t) => t.id === tradeFilter)?.name ?? 'All Trades'
+
+  if (loading) return <CoursesPageSkeleton />
 
   return (
     <div className="p-8 space-y-6">
@@ -241,6 +245,10 @@ export default function CoursesPage() {
               <Textarea placeholder="What does this course cover?" {...addForm.register('description')} />
             </div>
             <div className="space-y-2">
+              <Label>Duration <span className="text-gray-400 font-normal">(optional)</span></Label>
+              <Input placeholder="e.g. 6 Months, 1 Year" {...addForm.register('duration')} />
+            </div>
+            <div className="space-y-2">
               <Label>Trade</Label>
               <Select value={addForm.watch('trade_id') ?? ''} onValueChange={(v) => addForm.setValue('trade_id', v)}>
                 <SelectTrigger><SelectValue placeholder="Select trade..." /></SelectTrigger>
@@ -272,6 +280,10 @@ export default function CoursesPage() {
             <div className="space-y-2">
               <Label>Description</Label>
               <Textarea {...editForm.register('description')} />
+            </div>
+            <div className="space-y-2">
+              <Label>Duration</Label>
+              <Input placeholder="e.g. 6 Months, 1 Year" {...editForm.register('duration')} />
             </div>
             <div className="space-y-2">
               <Label>Trade</Label>

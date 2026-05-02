@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { Loader2, Clock, Users, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { useExamSessionStore } from '@/store/examSessionStore'
 import type { Exam } from '@/types/app.types'
@@ -17,17 +17,17 @@ export default function ExamLobbyPage() {
   const { setAttempt } = useExamSessionStore()
   const [exam, setExam] = useState<Exam | null>(null)
   const [questionCount, setQuestionCount] = useState(0)
-  const [existingAttempt, setExistingAttempt] = useState<{ id: string; status: string } | null>(null)
+  const [existingAttempt, setExistingAttempt] = useState<{ id: string; status: string; started_at?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
 
   useEffect(() => {
     if (!examId || !profile) return
-    supabase.rpc('expire_past_exams').then(() => {
+    db.rpc('expire_past_exams').then(() => {
       Promise.all([
-        supabase.from('exams').select('*').eq('id', examId).single(),
-        supabase.from('questions').select('id', { count: 'exact', head: true }).eq('exam_id', examId),
-        supabase.from('attempts').select('id, status').eq('exam_id', examId).eq('student_id', profile.id).maybeSingle(),
+        db.from('exams').select('*').eq('id', examId).single(),
+        db.from('questions').select('id', { count: 'exact', head: true }).eq('exam_id', examId),
+        db.from('attempts').select('id, status, started_at').eq('exam_id', examId).eq('student_id', profile.id).maybeSingle(),
       ]).then(([examRes, qRes, attRes]) => {
         setExam(examRes.data)
         setQuestionCount(qRes.count ?? 0)
@@ -40,7 +40,7 @@ export default function ExamLobbyPage() {
   const startExam = async () => {
     if (!examId || !profile) return
     setStarting(true)
-    const { data, error } = await supabase.from('attempts').insert({
+    const { data, error } = await db.from('attempts').insert({
       exam_id: examId,
       student_id: profile.id,
       status: 'in_progress',
@@ -125,7 +125,10 @@ export default function ExamLobbyPage() {
           <Button
             className="w-full bg-orange-500 hover:bg-orange-600 h-12 text-base"
             onClick={() => {
-              setAttempt(existingAttempt.id, examId!, exam?.duration_mins ?? null)
+              const originalStart = existingAttempt.started_at
+                ? new Date(existingAttempt.started_at).getTime()
+                : undefined
+              setAttempt(existingAttempt.id, examId!, exam?.duration_mins ?? null, originalStart)
               navigate(`/student/exams/${examId}/session`)
             }}
           >

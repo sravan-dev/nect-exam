@@ -3,7 +3,7 @@ import { Settings, Save, Loader2, ImageIcon, Type, RefreshCw, Upload, X } from '
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,7 +12,10 @@ import { toast } from '@/hooks/useToast'
 
 const schema = z.object({
   app_title:    z.string().min(1, 'App title is required'),
-  app_logo_url: z.string().url('Must be a valid URL').or(z.literal('')),
+  app_logo_url: z.string().refine(
+    (v) => v === '' || v.startsWith('http://') || v.startsWith('https://') || v.startsWith('/uploads/'),
+    'Must be a valid URL'
+  ),
 })
 type FormData = z.infer<typeof schema>
 
@@ -31,10 +34,10 @@ export default function SettingsPage() {
   const logoUrl = watch('app_logo_url')
 
   useEffect(() => {
-    supabase.from('app_settings').select('key, value').then(({ data }) => {
+    db.from('app_settings').select('key, value').then(({ data }) => {
       if (!data) return
       const map: Record<string, string> = {}
-      data.forEach((r) => { if (r.key && r.value) map[r.key] = r.value })
+      data.forEach((r: { key: string; value: string }) => { if (r.key && r.value) map[r.key] = r.value })
       reset({
         app_title:    map['app_title']    || 'NECT Exam',
         app_logo_url: map['app_logo_url'] || '',
@@ -58,7 +61,7 @@ export default function SettingsPage() {
     const ext      = file.name.split('.').pop()
     const filename = `logo-${Date.now()}.${ext}`
 
-    const { error: uploadError } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await db.storage
       .from('app-assets')
       .upload(filename, file, { upsert: true, contentType: file.type })
 
@@ -68,8 +71,10 @@ export default function SettingsPage() {
       return
     }
 
-    const { data: urlData } = supabase.storage.from('app-assets').getPublicUrl(filename)
-    const publicUrl = urlData.publicUrl
+    // Use the absolute URL returned by the server; fall back to origin-relative path
+    const publicUrl: string =
+      (uploadData as { url?: string })?.url ??
+      `${window.location.origin}/uploads/${filename}`
 
     setValue('app_logo_url', publicUrl, { shouldValidate: true })
     setPreview(publicUrl)
@@ -89,8 +94,8 @@ export default function SettingsPage() {
   const onSave = async (data: FormData) => {
     setSaving(true)
     const results = await Promise.all([
-      supabase.from('app_settings').upsert({ key: 'app_title',    value: data.app_title }),
-      supabase.from('app_settings').upsert({ key: 'app_logo_url', value: data.app_logo_url }),
+      db.from('app_settings').upsert({ key: 'app_title',    value: data.app_title }),
+      db.from('app_settings').upsert({ key: 'app_logo_url', value: data.app_logo_url }),
     ])
     setSaving(false)
     const err = results.find((r) => r.error)?.error
@@ -231,8 +236,8 @@ export default function SettingsPage() {
           <CardContent>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><p className="text-gray-500">Version</p><p className="font-medium text-gray-900">1.0.0</p></div>
-              <div><p className="text-gray-500">Database</p><p className="font-medium text-gray-900">Supabase (PostgreSQL)</p></div>
-              <div><p className="text-gray-500">Auth Provider</p><p className="font-medium text-gray-900">Supabase Auth</p></div>
+              <div><p className="text-gray-500">Database</p><p className="font-medium text-gray-900">MySQL (cPanel)</p></div>
+              <div><p className="text-gray-500">Auth Provider</p><p className="font-medium text-gray-900">Custom JWT</p></div>
               <div><p className="text-gray-500">Frontend</p><p className="font-medium text-gray-900">React + Vite</p></div>
             </div>
           </CardContent>

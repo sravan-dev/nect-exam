@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Loader2, CheckCircle, XCircle } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import type { ResponseWithQuestion } from '@/types/app.types'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -24,14 +24,14 @@ export default function GradePage() {
   useEffect(() => {
     if (!attemptId) return
     Promise.all([
-      supabase.from('attempts').select('score_pct, status, exam_id, grader_notes').eq('id', attemptId).single(),
-      supabase.from('responses').select('*, questions(*, answer_options(*))').eq('attempt_id', attemptId).order('questions(position)'),
+      db.from('attempts').select('score_pct, status, exam_id, grader_notes').eq('id', attemptId).single(),
+      db.from('responses').select('*, questions(*, answer_options(*))').eq('attempt_id', attemptId),
     ]).then(([attRes, resRes]) => {
       setAttempt(attRes.data)
       setGraderNotes(attRes.data?.grader_notes ?? '')
       setResponses((resRes.data ?? []) as ResponseWithQuestion[])
       const pts: Record<string, number> = {}
-      resRes.data?.forEach((r) => {
+      resRes.data?.forEach((r: ResponseWithQuestion) => {
         if (r.questions?.type === 'short_answer') pts[r.id] = r.points_awarded ?? 0
       })
       setShortAnswerPoints(pts)
@@ -44,10 +44,10 @@ export default function GradePage() {
     setSaving(true)
     for (const [responseId, pts] of Object.entries(shortAnswerPoints)) {
       const isCorrect = pts > 0
-      await supabase.from('responses').update({ points_awarded: pts, is_correct: isCorrect }).eq('id', responseId)
+      await db.from('responses').update({ points_awarded: pts, is_correct: isCorrect }).eq('id', responseId)
     }
-    await supabase.from('attempts').update({ grader_notes: graderNotes || null }).eq('id', attemptId)
-    await supabase.rpc('grade_attempt', { p_attempt_id: attemptId } as never)
+    await db.from('attempts').update({ grader_notes: graderNotes || null }).eq('id', attemptId)
+    await db.rpc('grade_attempt', { p_attempt_id: attemptId } as never)
     setSaving(false)
     toast({ title: 'Grades saved!' })
     navigate(`/admin/exams/${attempt?.exam_id}/results`)

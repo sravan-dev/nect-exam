@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BookOpen, FileText, Users, ClipboardCheck } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { AdminDashboardSkeleton } from '@/components/skeletons'
 
 interface Stats {
   courses: number
@@ -14,14 +15,15 @@ interface Stats {
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<Stats>({ courses: 0, exams: 0, students: 0, attempts: 0 })
   const [recentExams, setRecentExams] = useState<{ id: string; title: string; status: string; created_at: string }[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
-      supabase.from('courses').select('id', { count: 'exact', head: true }),
-      supabase.from('exams').select('id', { count: 'exact', head: true }),
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'student'),
-      supabase.from('attempts').select('id', { count: 'exact', head: true }),
-      supabase.from('exams').select('id, title, status, created_at').order('created_at', { ascending: false }).limit(5),
+      db.from('courses').select('id', { count: 'exact', head: true }),
+      db.from('exams').select('id', { count: 'exact', head: true }),
+      db.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'student'),
+      db.from('attempts').select('id', { count: 'exact', head: true }),
+      db.from('exams').select('id, title, status, created_at').order('created_at', { ascending: false }).limit(5),
     ]).then(([courses, exams, students, attempts, recent]) => {
       setStats({
         courses:  courses.count ?? 0,
@@ -30,6 +32,7 @@ export default function AdminDashboardPage() {
         attempts: attempts.count ?? 0,
       })
       setRecentExams(recent.data ?? [])
+      setLoading(false)
     })
   }, [])
 
@@ -46,6 +49,8 @@ export default function AdminDashboardPage() {
     active:    'bg-green-100 text-green-700',
     expired:   'bg-red-100 text-red-700',
   }
+
+  if (loading) return <AdminDashboardSkeleton />
 
   return (
     <div className="p-8 space-y-6">

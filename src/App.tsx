@@ -44,6 +44,7 @@ import StudentsPage       from '@/pages/admin/StudentsPage'
 import SettingsPage       from '@/pages/admin/SettingsPage'
 import TradesPage         from '@/pages/admin/TradesPage'
 import ExamsListPage      from '@/pages/admin/ExamsListPage'
+import ReportsPage        from '@/pages/admin/ReportsPage'
 
 // Student
 import StudentDashboardPage from '@/pages/student/DashboardPage'
@@ -85,6 +86,7 @@ export default function App() {
                 <Route path="/admin/exams"                      element={<ExamsListPage />} />
                 <Route path="/admin/students"                   element={<StudentsPage />} />
                 <Route path="/admin/settings"                   element={<SettingsPage />} />
+                <Route path="/admin/reports"                    element={<ReportsPage />} />
               </Route>
             </Route>
 

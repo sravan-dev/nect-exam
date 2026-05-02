@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, CheckCircle, XCircle } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
+import { AdminResultsSkeleton } from '@/components/skeletons'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -22,14 +23,14 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.from('attempts')
+    db.from('attempts')
       .select('id, status, score_pct, passed, submitted_at, exams(id, title), profiles(full_name, email)')
       .neq('status', 'in_progress')
       .order('submitted_at', { ascending: false })
       .then(({ data }) => { setRows((data ?? []) as unknown as Row[]); setLoading(false) })
   }, [])
 
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>
+  if (loading) return <AdminResultsSkeleton />
 
   return (
     <div className="p-8 space-y-6">

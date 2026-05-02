@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Loader2, Clock, ChevronLeft, ChevronRight, Send } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { useExamSessionStore } from '@/store/examSessionStore'
 import type { Exam, QuestionWithOptions } from '@/types/app.types'
@@ -22,14 +22,15 @@ export default function ExamSessionPage() {
   const [submitting, setSubmitting] = useState(false)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const handleSubmitRef = useRef<(autoSubmit?: boolean) => Promise<void>>(async () => {})
 
   useEffect(() => {
     if (!examId || !profile || !attemptId) {
       navigate(`/student/exams/${examId}`, { replace: true }); return
     }
     Promise.all([
-      supabase.from('exams').select('*').eq('id', examId).single(),
-      supabase.from('questions').select('*, answer_options(*)').eq('exam_id', examId).order('position'),
+      db.from('exams').select('*').eq('id', examId).single(),
+      db.from('questions').select('*, answer_options(*)').eq('exam_id', examId).order('position'),
     ]).then(([examRes, qRes]) => {
       setExam(examRes.data)
       let qs = (qRes.data ?? []) as QuestionWithOptions[]
@@ -41,20 +42,6 @@ export default function ExamSessionPage() {
     })
   }, [examId, profile, attemptId])
 
-  // Timer
-  useEffect(() => {
-    if (!durationMins || !startedAt) return
-    const endTime = startedAt + durationMins * 60 * 1000
-    const updateTimer = () => {
-      const left = Math.max(0, Math.floor((endTime - Date.now()) / 1000))
-      setTimeLeft(left)
-      if (left === 0) { clearInterval(timerRef.current!); handleSubmit(true) }
-    }
-    updateTimer()
-    timerRef.current = setInterval(updateTimer, 1000)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [durationMins, startedAt])
-
   const handleSubmit = useCallback(async (autoSubmit = false) => {
     if (!attemptId || !profile || !exam) return
     if (!autoSubmit && !confirm('Submit exam? You cannot change your answers after submission.')) return
@@ -62,7 +49,7 @@ export default function ExamSessionPage() {
 
     // Flush all responses to DB
     for (const resp of Object.values(responses)) {
-      await supabase.from('responses').upsert({
+      await db.from('responses').upsert({
         attempt_id: attemptId,
         question_id: resp.questionId,
         selected_option_id: resp.selectedOptionId ?? null,
@@ -71,23 +58,40 @@ export default function ExamSessionPage() {
     }
 
     const timeSecs = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : null
-    await supabase.from('attempts').update({
+    await db.from('attempts').update({
       status: 'submitted',
       submitted_at: new Date().toISOString(),
       time_spent_secs: timeSecs,
     }).eq('id', attemptId)
 
     // Auto-grade
-    await supabase.rpc('grade_attempt', { p_attempt_id: attemptId } as never)
+    await db.rpc('grade_attempt', { p_attempt_id: attemptId } as never)
 
     clearSession()
     navigate(`/student/exams/${examId}/submitted`, { replace: true })
   }, [attemptId, profile, exam, responses, startedAt])
 
+  // Keep ref current so timer interval always calls the latest version
+  useEffect(() => { handleSubmitRef.current = handleSubmit }, [handleSubmit])
+
+  // Timer
+  useEffect(() => {
+    if (!durationMins || !startedAt) return
+    const endTime = startedAt + durationMins * 60 * 1000
+    const updateTimer = () => {
+      const left = Math.max(0, Math.floor((endTime - Date.now()) / 1000))
+      setTimeLeft(left)
+      if (left === 0) { clearInterval(timerRef.current!); handleSubmitRef.current(true) }
+    }
+    updateTimer()
+    timerRef.current = setInterval(updateTimer, 1000)
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [durationMins, startedAt])
+
   const saveCurrentResponse = async (questionId: string, selectedOptionId?: string, textAnswer?: string) => {
     saveResponse({ questionId, selectedOptionId, textAnswer })
     // Also persist to DB immediately
-    await supabase.from('responses').upsert({
+    await db.from('responses').upsert({
       attempt_id: attemptId!,
       question_id: questionId,
       selected_option_id: selectedOptionId ?? null,

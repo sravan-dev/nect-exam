@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, CheckCircle, XCircle, Clock, Trophy } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
+import { StudentResultsSkeleton } from '@/components/skeletons'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,7 +27,7 @@ export default function StudentResultsPage() {
 
   useEffect(() => {
     if (!profile) return
-    supabase.from('attempts')
+    db.from('attempts')
       .select('id, status, score_pct, passed, time_spent_secs, submitted_at, exam_id, exams(title)')
       .eq('student_id', profile.id)
       .neq('status', 'in_progress')
@@ -40,7 +41,7 @@ export default function StudentResultsPage() {
     ? Math.round(results.reduce((s, r) => s + (r.score_pct ?? 0), 0) / results.length)
     : 0
 
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>
+  if (loading) return <StudentResultsSkeleton />
 
   return (
     <div className="p-8 space-y-6">

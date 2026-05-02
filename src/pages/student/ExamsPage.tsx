@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, Clock, Globe, Lock } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import type { Exam, Attempt } from '@/types/app.types'
+import { StudentExamsSkeleton } from '@/components/skeletons'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,21 +18,21 @@ export default function ExamsPage() {
 
   useEffect(() => {
     if (!profile) return
-    supabase.rpc('expire_past_exams').then(() => {
+    db.rpc('expire_past_exams').then(() => {
       Promise.all([
-        supabase.from('exams').select('*').in('status', ['published', 'active']).order('created_at', { ascending: false }),
-        supabase.from('attempts').select('*').eq('student_id', profile.id),
+        db.from('exams').select('*').in('status', ['published', 'active']).order('created_at', { ascending: false }),
+        db.from('attempts').select('*').eq('student_id', profile.id),
       ]).then(([examRes, attRes]) => {
         setExams(examRes.data ?? [])
         const attMap: Record<string, Attempt> = {}
-        attRes.data?.forEach((a) => { attMap[a.exam_id] = a })
+        attRes.data?.forEach((a: Attempt) => { attMap[a.exam_id] = a })
         setAttempts(attMap)
         setLoading(false)
       })
     })
   }, [profile])
 
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>
+  if (loading) return <StudentExamsSkeleton />
 
   return (
     <div className="p-8 space-y-6">

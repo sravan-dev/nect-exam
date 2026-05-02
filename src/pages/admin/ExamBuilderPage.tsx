@@ -5,7 +5,7 @@ import JSZip from 'jszip'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import type { Exam, QuestionLibraryItem, QuestionLibraryOption, QuestionWithOptions, QuestionType } from '@/types/app.types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -62,8 +62,8 @@ export default function ExamBuilderPage() {
   const fetchData = async () => {
     if (!examId) return
     const [examRes, qRes] = await Promise.all([
-      supabase.from('exams').select('*').eq('id', examId).single(),
-      supabase.from('questions').select('*, answer_options(*)').eq('exam_id', examId).order('position'),
+      db.from('exams').select('*').eq('id', examId).single(),
+      db.from('questions').select('*, answer_options(*)').eq('exam_id', examId).order('position'),
     ])
     if (examRes.data) {
       setExam(examRes.data)
@@ -86,7 +86,7 @@ export default function ExamBuilderPage() {
 
   const fetchLibrary = async () => {
     setLibraryLoading(true)
-    const { data, error } = await supabase.from('question_library').select('*, question_library_options(*)').order('created_at', { ascending: false })
+    const { data, error } = await db.from('question_library').select('*, question_library_options(*)').order('created_at', { ascending: false })
     setLibraryLoading(false)
     if (error) {
       toast({ title: 'Failed to load question library', description: error.message, variant: 'destructive' })
@@ -229,7 +229,7 @@ export default function ExamBuilderPage() {
         const q = parsedQuestions[idx]
         const questionType = q.options.length >= 2 ? 'mcq' as const : 'short_answer' as const
 
-        const { data: insertedQuestion, error: qErr } = await supabase.from('questions').insert({
+        const { data: insertedQuestion, error: qErr } = await db.from('questions').insert({
           exam_id: examId,
           type: questionType,
           prompt: q.prompt,
@@ -243,7 +243,7 @@ export default function ExamBuilderPage() {
         }
 
         if (questionType === 'mcq' && q.options.length > 0) {
-          await supabase.from('answer_options').insert(
+          await db.from('answer_options').insert(
             q.options.map((opt, i) => ({ question_id: insertedQuestion.id, text: opt, is_correct: i === (q.correctIndex ?? 0), position: i }))
           )
         }
@@ -286,10 +286,10 @@ export default function ExamBuilderPage() {
     try {
       let insertedCount = 0
       for (const libQuestionId of selectedLibraryIds) {
-        const { data: libQuestion, error: qErr } = await supabase.from('question_library').select('*').eq('id', libQuestionId).single()
+        const { data: libQuestion, error: qErr } = await db.from('question_library').select('*').eq('id', libQuestionId).single()
         if (qErr || !libQuestion) continue
 
-        const { data: insertedQuestion, error: insertErr } = await supabase.from('questions').insert({
+        const { data: insertedQuestion, error: insertErr } = await db.from('questions').insert({
           exam_id: examId,
           type: libQuestion.type,
           prompt: libQuestion.prompt,
@@ -300,9 +300,9 @@ export default function ExamBuilderPage() {
 
         if (insertErr || !insertedQuestion) continue
 
-        const { data: libOptions } = await supabase.from('question_library_options').select('*').eq('question_library_id', libQuestionId).order('position')
+        const { data: libOptions } = await db.from('question_library_options').select('*').eq('question_library_id', libQuestionId).order('position')
         if (libOptions && libOptions.length > 0) {
-          await supabase.from('answer_options').insert(
+          await db.from('answer_options').insert(
             libOptions.map((o: QuestionLibraryOption, idx: number) => ({ question_id: insertedQuestion.id, text: o.text, is_correct: o.is_correct, position: idx }))
           )
         }
@@ -325,7 +325,7 @@ export default function ExamBuilderPage() {
   const saveSettings = async (data: ExamFormData) => {
     if (!examId) return
     setSavingSettings(true)
-    const { error } = await supabase.from('exams').update({
+    const { error } = await db.from('exams').update({
       title: data.title,
       description: data.description || null,
       instructions: data.instructions || null,
@@ -347,7 +347,7 @@ export default function ExamBuilderPage() {
     if (!examId || questions.length === 0) {
       toast({ title: 'Add at least one question first', variant: 'destructive' }); return
     }
-    const { error } = await supabase.from('exams').update({ status: 'published' }).eq('id', examId)
+    const { error } = await db.from('exams').update({ status: 'published' }).eq('id', examId)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     toast({ title: 'Exam published!' })
     fetchData()
@@ -355,19 +355,19 @@ export default function ExamBuilderPage() {
 
   const expireExam = async () => {
     if (!examId) return
-    await supabase.from('exams').update({ status: 'expired' }).eq('id', examId)
+    await db.from('exams').update({ status: 'expired' }).eq('id', examId)
     toast({ title: 'Exam expired' })
     fetchData()
   }
 
   const resetToDraft = async () => {
     if (!examId || !confirm('Reset to draft? This will not delete submitted attempts.')) return
-    await supabase.from('exams').update({ status: 'draft' }).eq('id', examId)
+    await db.from('exams').update({ status: 'draft' }).eq('id', examId)
     fetchData()
   }
 
   const deleteQuestion = async (qId: string) => {
-    await supabase.from('questions').delete().eq('id', qId)
+    await db.from('questions').delete().eq('id', qId)
     setQuestions((q) => q.filter((x) => x.id !== qId))
     toast({ title: 'Question deleted' })
   }
@@ -673,15 +673,15 @@ function QuestionDialog({ open, onClose, examId, initialType, onTypeChange, edit
     setSaving(true)
 
     if (editingQuestion) {
-      await supabase.from('questions').update({ prompt, points, explanation: explanation || null }).eq('id', editingQuestion.id)
-      await supabase.from('answer_options').delete().eq('question_id', editingQuestion.id)
+      await db.from('questions').update({ prompt, points, explanation: explanation || null }).eq('id', editingQuestion.id)
+      await db.from('answer_options').delete().eq('question_id', editingQuestion.id)
     } else {
-      const { data: qData } = await supabase.from('questions').insert({
+      const { data: qData } = await db.from('questions').insert({
         exam_id: examId, type: qType, prompt, points,
         explanation: explanation || null, position: nextPosition,
       }).select().single()
       if (qData && qType !== 'short_answer') {
-        await supabase.from('answer_options').insert(
+        await db.from('answer_options').insert(
           options.filter((o) => o.text.trim()).map((o, i) => ({ question_id: qData.id, ...o, position: i }))
         )
       }
@@ -689,7 +689,7 @@ function QuestionDialog({ open, onClose, examId, initialType, onTypeChange, edit
     }
 
     if (editingQuestion && qType !== 'short_answer') {
-      await supabase.from('answer_options').insert(
+      await db.from('answer_options').insert(
         options.filter((o) => o.text.trim()).map((o, i) => ({ question_id: editingQuestion.id, ...o, position: i }))
       )
     }

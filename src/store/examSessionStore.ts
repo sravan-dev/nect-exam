@@ -14,7 +14,7 @@ interface ExamSessionState {
   durationMins: number | null
   responses: Record<string, ResponseDraft>
   currentQuestionIndex: number
-  setAttempt: (attemptId: string, examId: string, durationMins: number | null) => void
+  setAttempt: (attemptId: string, examId: string, durationMins: number | null, startedAt?: number) => void
   saveResponse: (draft: ResponseDraft) => void
   setCurrentIndex: (i: number) => void
   clearSession: () => void
@@ -29,12 +29,12 @@ export const useExamSessionStore = create<ExamSessionState>()(
       durationMins: null,
       responses: {},
       currentQuestionIndex: 0,
-      setAttempt: (attemptId, examId, durationMins) =>
+      setAttempt: (attemptId, examId, durationMins, startedAt?) =>
         set({
           attemptId,
           examId,
           durationMins,
-          startedAt: Date.now(),
+          startedAt: startedAt ?? Date.now(),
           responses: {},
           currentQuestionIndex: 0,
         }),

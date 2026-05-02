@@ -42,6 +42,14 @@ export interface Database {
           full_name: string | null
           role: UserRole
           avatar_url: string | null
+          dob: string | null
+          father_name: string | null
+          mother_name: string | null
+          address: string | null
+          pin_code: string | null
+          mobile: string | null
+          course_id: string | null
+          reference: string | null
           created_at: string
           updated_at: string
         }
@@ -51,6 +59,14 @@ export interface Database {
           full_name?: string | null
           role?: UserRole
           avatar_url?: string | null
+          dob?: string | null
+          father_name?: string | null
+          mother_name?: string | null
+          address?: string | null
+          pin_code?: string | null
+          mobile?: string | null
+          course_id?: string | null
+          reference?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -60,6 +76,14 @@ export interface Database {
           full_name?: string | null
           role?: UserRole
           avatar_url?: string | null
+          dob?: string | null
+          father_name?: string | null
+          mother_name?: string | null
+          address?: string | null
+          pin_code?: string | null
+          mobile?: string | null
+          course_id?: string | null
+          reference?: string | null
           updated_at?: string
         }
       }
@@ -70,6 +94,7 @@ export interface Database {
           trade_id: string | null
           title: string
           description: string | null
+          duration: string | null
           created_at: string
           updated_at: string
         }
@@ -79,6 +104,7 @@ export interface Database {
           trade_id?: string | null
           title: string
           description?: string | null
+          duration?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -86,6 +112,7 @@ export interface Database {
           trade_id?: string | null
           title?: string
           description?: string | null
+          duration?: string | null
           updated_at?: string
         }
       }

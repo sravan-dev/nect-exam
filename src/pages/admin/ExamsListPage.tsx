@@ -4,8 +4,9 @@ import {
   FileText, Pencil, Trash2, Loader2, Plus, Search,
   Users, BarChart2, Filter,
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import type { Exam, Course, Trade } from '@/types/app.types'
+import { ExamsListSkeleton } from '@/components/skeletons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -39,20 +40,20 @@ export default function ExamsListPage() {
       { data: coursesData },
       { data: tradesData },
     ] = await Promise.all([
-      supabase.from('exams').select('*').order('created_at', { ascending: false }),
-      supabase.from('courses').select('*'),
-      supabase.from('trades').select('*').order('name'),
+      db.from('exams').select('*').order('created_at', { ascending: false }),
+      db.from('courses').select('*'),
+      db.from('trades').select('*').order('name'),
     ])
 
     const tradeMap: Record<string, Trade>  = {}
     const courseMap: Record<string, Course & { trade?: Trade }> = {}
 
-    ;(tradesData ?? []).forEach((t) => { tradeMap[t.id] = t })
-    ;(coursesData ?? []).forEach((c) => {
+    ;(tradesData ?? []).forEach((t: Trade) => { tradeMap[t.id] = t })
+    ;(coursesData ?? []).forEach((c: Course) => {
       courseMap[c.id] = { ...c, trade: c.trade_id ? tradeMap[c.trade_id] : undefined }
     })
 
-    const merged: ExamRow[] = (examsData ?? []).map((e) => ({
+    const merged: ExamRow[] = (examsData ?? []).map((e: Exam) => ({
       ...e,
       course: courseMap[e.course_id],
     }))
@@ -88,7 +89,7 @@ export default function ExamsListPage() {
       return
     }
     setCreating(true)
-    const { data, error } = await supabase.from('exams').insert({
+    const { data, error } = await db.from('exams').insert({
       course_id:         courses[0].id,
       title:             'Untitled Exam',
       status:            'draft',
@@ -104,7 +105,7 @@ export default function ExamsListPage() {
 
   const deleteExam = async (id: string) => {
     if (!confirm('Delete this exam and all its questions?')) return
-    const { error } = await supabase.from('exams').delete().eq('id', id)
+    const { error } = await db.from('exams').delete().eq('id', id)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     setExams((e) => e.filter((x) => x.id !== id))
     toast({ title: 'Exam deleted' })
@@ -117,6 +118,8 @@ export default function ExamsListPage() {
     { value: 'active',    label: 'Active' },
     { value: 'expired',   label: 'Expired' },
   ]
+
+  if (loading) return <ExamsListSkeleton />
 
   return (
     <div className="p-8 space-y-6">

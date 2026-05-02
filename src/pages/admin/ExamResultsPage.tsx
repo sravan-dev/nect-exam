@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Loader2, CheckCircle, XCircle, Clock } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import type { Exam } from '@/types/app.types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,8 +28,8 @@ export default function ExamResultsPage() {
   useEffect(() => {
     if (!examId) return
     Promise.all([
-      supabase.from('exams').select('*').eq('id', examId).single(),
-      supabase.from('attempts').select('*, profiles(full_name, email)').eq('exam_id', examId).order('submitted_at', { ascending: false }),
+      db.from('exams').select('*').eq('id', examId).single(),
+      db.from('attempts').select('*, profiles(full_name, email)').eq('exam_id', examId).order('submitted_at', { ascending: false }),
     ]).then(([examRes, attRes]) => {
       setExam(examRes.data)
       setAttempts((attRes.data ?? []) as AttemptRow[])

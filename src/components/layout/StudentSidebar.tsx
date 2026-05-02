@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, BookOpen, ClipboardCheck, LogOut, GraduationCap } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 
 const links = [
@@ -15,7 +15,7 @@ export function StudentSidebar() {
   const { profile } = useAuthStore()
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await db.auth.signOut()
     navigate('/login')
   }
 

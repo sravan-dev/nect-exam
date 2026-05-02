@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Plus, Trash2, Loader2, Users, Globe, Lock } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/api'
 import type { Exam, Profile, ExamAssignment } from '@/types/app.types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,9 +27,9 @@ export default function ExamAssignPage() {
   const fetchData = async () => {
     if (!examId) return
     const [examRes, assignRes, studentRes] = await Promise.all([
-      supabase.from('exams').select('*').eq('id', examId).single(),
-      supabase.from('exam_assignments').select('*, profiles(*)').eq('exam_id', examId),
-      supabase.from('profiles').select('*').eq('role', 'student').order('full_name'),
+      db.from('exams').select('*').eq('id', examId).single(),
+      db.from('exam_assignments').select('*, profiles(*)').eq('exam_id', examId),
+      db.from('profiles').select('*').eq('role', 'student').order('full_name'),
     ])
     setExam(examRes.data)
     setAssignments((assignRes.data ?? []) as (ExamAssignment & { profiles: Profile })[])
@@ -41,7 +41,7 @@ export default function ExamAssignPage() {
 
   const togglePublic = async () => {
     if (!exam) return
-    const { error } = await supabase.from('exams').update({ is_public: !exam.is_public }).eq('id', examId!)
+    const { error } = await db.from('exams').update({ is_public: !exam.is_public }).eq('id', examId!)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     toast({ title: exam.is_public ? 'Exam set to private' : 'Exam set to public' })
     fetchData()
@@ -49,7 +49,7 @@ export default function ExamAssignPage() {
 
   const assignStudent = async (studentId: string) => {
     setAssigning(studentId)
-    const { error } = await supabase.from('exam_assignments').insert({ exam_id: examId!, student_id: studentId })
+    const { error } = await db.from('exam_assignments').insert({ exam_id: examId!, student_id: studentId })
     setAssigning(null)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     fetchData()
@@ -57,7 +57,7 @@ export default function ExamAssignPage() {
   }
 
   const removeAssignment = async (assignId: string) => {
-    await supabase.from('exam_assignments').delete().eq('id', assignId)
+    await db.from('exam_assignments').delete().eq('id', assignId)
     setAssignments((a) => a.filter((x) => x.id !== assignId))
     toast({ title: 'Assignment removed' })
   }

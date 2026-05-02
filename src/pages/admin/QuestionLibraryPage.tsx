@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Edit, Loader2, Upload } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { Plus, Trash2, Edit, Loader2, Upload, CheckSquare, Square } from 'lucide-react'
+import { db } from '@/lib/api'
 import type { QuestionLibraryItem, QuestionType } from '@/types/app.types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,13 +32,40 @@ export default function QuestionLibraryPage() {
   const [options, setOptions] = useState<{ text: string; is_correct: boolean }[]>(defaultOptions)
   const [importing, setImporting] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
+
+  const allSelected = items.length > 0 && selected.size === items.length
+  const toggleOne = (id: string) => setSelected(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(items.map(i => i.id)))
+
+  const deleteSelected = async () => {
+    if (selected.size === 0) return
+    if (!confirm(`Delete ${selected.size} question(s)?`)) return
+    setDeleting(true)
+    let failed = 0
+    for (const id of selected) {
+      const { error } = await db.from('question_library').delete().eq('id', id)
+      if (error) failed++
+    }
+    setDeleting(false)
+    setSelected(new Set())
+    if (failed > 0) toast({ title: `${failed} deletion(s) failed`, variant: 'destructive' })
+    else toast({ title: `${selected.size} question(s) deleted` })
+    fetchItems()
+  }
 
   const fetchItems = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('question_library').select('*').order('created_at', { ascending: false })
+    const { data, error } = await db.from('question_library').select('*').order('created_at', { ascending: false })
     setLoading(false)
     if (error) { toast({ title: 'Failed to load library', description: error.message, variant: 'destructive' }); return }
     setItems(data ?? [])
+    setSelected(new Set())
   }
 
   useEffect(() => { fetchItems() }, [])
@@ -73,11 +100,11 @@ export default function QuestionLibraryPage() {
     }
 
     if (dialog.mode === 'add') {
-      const { error } = await supabase.from('question_library').insert({ type: qType, prompt, points, explanation: explanation || null })
+      const { error } = await db.from('question_library').insert({ type: qType, prompt, points, explanation: explanation || null })
       if (error) { toast({ title: 'Create failed', description: error.message, variant: 'destructive' }); return }
       toast({ title: 'Question added to library' })
     } else if (dialog.item) {
-      const { error } = await supabase.from('question_library').update({ type: qType, prompt, points, explanation: explanation || null }).eq('id', dialog.item.id)
+      const { error } = await db.from('question_library').update({ type: qType, prompt, points, explanation: explanation || null }).eq('id', dialog.item.id)
       if (error) { toast({ title: 'Update failed', description: error.message, variant: 'destructive' }); return }
       toast({ title: 'Question updated' })
     }
@@ -88,7 +115,7 @@ export default function QuestionLibraryPage() {
 
   const deleteItem = async (id: string) => {
     if (!confirm('Delete this library question?')) return
-    const { error } = await supabase.from('question_library').delete().eq('id', id)
+    const { error } = await db.from('question_library').delete().eq('id', id)
     if (error) { toast({ title: 'Delete failed', description: error.message, variant: 'destructive' }); return }
     toast({ title: 'Question deleted' })
     fetchItems()
@@ -164,6 +191,9 @@ export default function QuestionLibraryPage() {
     }
 
     for (const line of lines) {
+      // Skip footer/note lines that are not questions
+      if (/^\s*Note\s*[:\-]/i.test(line)) continue
+
       const qMatch = line.match(/^\s*(?:Q\s*)?(\d+)\s*[\.\)]\s*(.*)$/i)
       const choiceMatch = line.match(/^\s*([A-Da-d])\s*[\.\)]\s*(.*)$/i)
       const answerMatch = line.match(/^\s*(?:Correct Answer|Answer)\s*[:\-]?\s*(.*)$/i)
@@ -176,9 +206,10 @@ export default function QuestionLibraryPage() {
 
       if (qMatch) {
         flushCurrent()
-        current = { prompt: qMatch[2].trim(), options: [], correctIndex: null }
+        current = { prompt: qMatch[2].replace(/[✔✓✗✘☑☒✅]/g, '').trim(), options: [], correctIndex: null }
       } else if (choiceMatch && current) {
-        current.options.push(choiceMatch[2].trim())
+        // Strip checkmark characters (✔ ✓ etc.) that may appear on correct options
+        current.options.push(choiceMatch[2].replace(/[✔✓✗✘☑☒✅]/g, '').trim())
       } else if (answerMatch && current) {
         const value = answerMatch[1].trim()
         if (value) applyAnswerValue(value)
@@ -215,7 +246,7 @@ export default function QuestionLibraryPage() {
 
       for (let idx = 0; idx < totalQuestions; idx += 1) {
         const q = questions[idx]
-        const { data: insertedQuestion, error: qErr } = await supabase.from('question_library').insert({
+        const { data: insertedQuestion, error: qErr } = await db.from('question_library').insert({
           type: q.options.length >= 2 ? 'mcq' : 'short_answer',
           prompt: q.prompt,
           points: 1,
@@ -234,7 +265,7 @@ export default function QuestionLibraryPage() {
             is_correct: i === (q.correctIndex ?? 0),
             position: i,
           }))
-          const { error: optErr } = await supabase.from('question_library_options').insert(inserts)
+          const { error: optErr } = await db.from('question_library_options').insert(inserts)
           if (optErr) {
             console.error('Question library options insert failed', optErr)
           }
@@ -275,15 +306,44 @@ export default function QuestionLibraryPage() {
           />
           <Button onClick={openAdd}><Plus className="mr-2 h-4 w-4" />Add Question</Button>
         </div>
-        {uploadProgress > 0 && (
-          <div className="mt-3">
-            <div className="h-2 w-full rounded bg-slate-200 overflow-hidden">
-              <div className="h-2 rounded bg-blue-600 transition-all" style={{ width: `${uploadProgress}%` }} />
-            </div>
-            <p className="mt-1 text-xs text-gray-500">Import progress: {uploadProgress}%</p>
-          </div>
-        )}
       </div>
+
+      {uploadProgress > 0 && (
+        <div>
+          <div className="h-2 w-full rounded bg-slate-200 overflow-hidden">
+            <div className="h-2 rounded bg-blue-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+          </div>
+          <p className="mt-1 text-xs text-gray-500">Import progress: {uploadProgress}%</p>
+        </div>
+      )}
+
+      {/* Bulk action bar — visible when at least one item is selected */}
+      {items.length > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border bg-gray-50 px-4 py-2">
+          <button onClick={toggleAll} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
+            {allSelected
+              ? <CheckSquare className="h-4 w-4 text-blue-600" />
+              : <Square className="h-4 w-4" />}
+            {allSelected ? 'Deselect all' : `Select all (${items.length})`}
+          </button>
+          {selected.size > 0 && (
+            <>
+              <span className="text-xs text-gray-400">|</span>
+              <span className="text-sm text-gray-600">{selected.size} selected</span>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={deleteSelected}
+                disabled={deleting}
+                className="ml-auto"
+              >
+                {deleting ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1 h-4 w-4" />}
+                Delete selected
+              </Button>
+            </>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>
@@ -291,28 +351,45 @@ export default function QuestionLibraryPage() {
         <Card><CardContent className="py-10 text-center text-gray-500">No library questions yet.</CardContent></Card>
       ) : (
         <div className="space-y-3">
-          {items.map((item) => (
-            <Card key={item.id}>
-              <CardContent className="flex justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs text-gray-400 font-mono">{item.type.toUpperCase()}</span>
-                    <span className="text-xs text-gray-400">{item.points} pt</span>
+          {items.map((item) => {
+            const isSelected = selected.has(item.id)
+            return (
+              <Card
+                key={item.id}
+                className={`cursor-pointer transition-colors ${isSelected ? 'border-blue-400 bg-blue-50' : ''}`}
+                onClick={() => toggleOne(item.id)}
+              >
+                <CardContent className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <button
+                      className="mt-0.5 shrink-0"
+                      onClick={e => { e.stopPropagation(); toggleOne(item.id) }}
+                    >
+                      {isSelected
+                        ? <CheckSquare className="h-4 w-4 text-blue-600" />
+                        : <Square className="h-4 w-4 text-gray-400" />}
+                    </button>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs text-gray-400 font-mono">{item.type.toUpperCase()}</span>
+                        <span className="text-xs text-gray-400">{item.points} pt</span>
+                      </div>
+                      <p className="text-sm font-semibold">{item.prompt}</p>
+                      {item.explanation && <p className="text-xs text-gray-500 mt-1">{item.explanation}</p>}
+                    </div>
                   </div>
-                  <p className="text-sm font-semibold">{item.prompt}</p>
-                  {item.explanation && <p className="text-xs text-gray-500 mt-1">{item.explanation}</p>}
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(item)}>
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="text-red-500" onClick={() => deleteItem(item.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  <div className="flex gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(item)}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-red-500" onClick={() => deleteItem(item.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
 

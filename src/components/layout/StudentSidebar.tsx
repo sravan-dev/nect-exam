@@ -10,7 +10,11 @@ const links = [
   { to: '/student/results', label: 'My Results',icon: ClipboardCheck },
 ]
 
-export function StudentSidebar() {
+interface Props {
+  onClose?: () => void
+}
+
+export function StudentSidebar({ onClose }: Props) {
   const navigate = useNavigate()
   const { profile } = useAuthStore()
 
@@ -36,6 +40,7 @@ export function StudentSidebar() {
             key={to}
             to={to}
             end={end}
+            onClick={onClose}
             className={({ isActive }) =>
               cn('flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors',
                 isActive ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white')

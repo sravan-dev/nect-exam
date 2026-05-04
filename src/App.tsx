@@ -27,8 +27,10 @@ import { Toaster } from '@/components/ui/toaster'
 import { AppSettingsProvider } from '@/contexts/AppSettingsContext'
 
 // Auth
-import LoginPage    from '@/pages/auth/LoginPage'
-import RegisterPage from '@/pages/auth/RegisterPage'
+import LoginPage           from '@/pages/auth/LoginPage'
+import RegisterPage        from '@/pages/auth/RegisterPage'
+import ForgotPasswordPage  from '@/pages/auth/ForgotPasswordPage'
+import ResetPasswordPage   from '@/pages/auth/ResetPasswordPage'
 
 // Admin
 import AdminDashboardPage from '@/pages/admin/DashboardPage'
@@ -53,6 +55,7 @@ import ExamLobbyPage        from '@/pages/student/ExamLobbyPage'
 import ExamSessionPage      from '@/pages/student/ExamSessionPage'
 import ExamSubmittedPage    from '@/pages/student/ExamSubmittedPage'
 import StudentResultsPage   from '@/pages/student/ResultsPage'
+import StudentProfilePage   from '@/pages/student/ProfilePage'
 
 function AuthInit({ children }: { children: React.ReactNode }) {
   useAuthInit()
@@ -67,8 +70,10 @@ export default function App() {
         <AuthInit>
           <Routes>
             {/* Public */}
-            <Route path="/login"    element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/login"            element={<LoginPage />} />
+            <Route path="/register"         element={<RegisterPage />} />
+            <Route path="/forgot-password"  element={<ForgotPasswordPage />} />
+            <Route path="/reset-password"   element={<ResetPasswordPage />} />
 
             {/* Admin routes */}
             <Route element={<ProtectedRoute role="admin" />}>
@@ -98,6 +103,7 @@ export default function App() {
                 <Route path="/student/exams/:examId"             element={<ExamLobbyPage />} />
                 <Route path="/student/exams/:examId/submitted"   element={<ExamSubmittedPage />} />
                 <Route path="/student/results"                   element={<StudentResultsPage />} />
+                <Route path="/student/profile"                  element={<StudentProfilePage />} />
               </Route>
               {/* Full-screen exam session (no sidebar) */}
               <Route path="/student/exams/:examId/session"       element={<ExamSessionPage />} />

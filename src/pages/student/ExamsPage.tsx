@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Loader2, Clock, Globe, Lock } from 'lucide-react'
+import { Clock } from 'lucide-react'
 import { db } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import type { Exam, Attempt } from '@/types/app.types'
@@ -13,22 +13,46 @@ import { formatDate, formatDuration, getStatusColor } from '@/lib/utils'
 export default function ExamsPage() {
   const { profile } = useAuthStore()
   const [exams, setExams] = useState<Exam[]>([])
-  const [attempts, setAttempts] = useState<Record<string, Attempt>>({})
+  const [lastAttempt, setLastAttempt] = useState<Record<string, Attempt>>({})
+  const [attemptCounts, setAttemptCounts] = useState<Record<string, number>>({})
+  const [maxAttemptsMap, setMaxAttemptsMap] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!profile) return
-    db.rpc('expire_past_exams').then(() => {
-      Promise.all([
-        db.from('exams').select('*').in('status', ['published', 'active']).order('created_at', { ascending: false }),
-        db.from('attempts').select('*').eq('student_id', profile.id),
-      ]).then(([examRes, attRes]) => {
-        setExams(examRes.data ?? [])
-        const attMap: Record<string, Attempt> = {}
-        attRes.data?.forEach((a: Attempt) => { attMap[a.exam_id] = a })
-        setAttempts(attMap)
-        setLoading(false)
+    db.rpc('expire_past_exams').then(async () => {
+      const { data: assignData } = await db.from('exam_assignments')
+        .select('exam_id, max_attempts')
+        .eq('student_id', profile.id)
+
+      const assignedIds: string[] = (assignData ?? []).map((a: { exam_id: string }) => a.exam_id)
+      const maxMap: Record<string, number> = {}
+      ;(assignData ?? []).forEach((a: { exam_id: string; max_attempts: number }) => {
+        maxMap[a.exam_id] = a.max_attempts ?? 1
       })
+      setMaxAttemptsMap(maxMap)
+
+      if (assignedIds.length === 0) {
+        setExams([])
+        setLoading(false)
+        return
+      }
+
+      const [examRes, attRes] = await Promise.all([
+        db.from('exams').select('*').in('id', assignedIds).in('status', ['published', 'active']).order('created_at', { ascending: false }),
+        db.from('attempts').select('*').eq('student_id', profile.id),
+      ])
+      setExams(examRes.data ?? [])
+
+      const lastMap: Record<string, Attempt> = {}
+      const countMap: Record<string, number> = {}
+      attRes.data?.forEach((a: Attempt) => {
+        lastMap[a.exam_id] = a
+        countMap[a.exam_id] = (countMap[a.exam_id] ?? 0) + 1
+      })
+      setLastAttempt(lastMap)
+      setAttemptCounts(countMap)
+      setLoading(false)
     })
   }, [profile])
 
@@ -38,7 +62,7 @@ export default function ExamsPage() {
     <div className="p-4 md:p-8 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Exams</h1>
-        <p className="text-gray-500 text-sm mt-1">All exams available to you</p>
+        <p className="text-gray-500 text-sm mt-1">Your assigned exams</p>
       </div>
 
       {exams.length === 0 ? (
@@ -46,7 +70,10 @@ export default function ExamsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {exams.map((exam) => {
-            const attempt = attempts[exam.id]
+            const attempt = lastAttempt[exam.id]
+            const count = attemptCounts[exam.id] ?? 0
+            const max = maxAttemptsMap[exam.id] ?? 1
+            const exhausted = count >= max
             const completed = attempt && attempt.status !== 'in_progress'
             const inProgress = attempt?.status === 'in_progress'
             const now = new Date()
@@ -57,10 +84,8 @@ export default function ExamsPage() {
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between mb-3">
                     <Badge className={getStatusColor(exam.status)}>{exam.status}</Badge>
-                    {exam.is_public ? (
-                      <span className="flex items-center gap-1 text-xs text-gray-400"><Globe className="h-3 w-3" />Public</span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-xs text-gray-400"><Lock className="h-3 w-3" />Assigned</span>
+                    {count > 0 && (
+                      <span className="text-xs text-gray-400">{count}/{max} attempt{max !== 1 ? 's' : ''}</span>
                     )}
                   </div>
                   <h3 className="font-semibold text-gray-900 mb-2">{exam.title}</h3>
@@ -73,19 +98,20 @@ export default function ExamsPage() {
                     {exam.ends_at && <span>Ends: {formatDate(exam.ends_at)}</span>}
                   </div>
 
-                  {completed ? (
-                    <div className="flex items-center gap-2">
-                      <Badge variant={attempt.passed ? 'success' : 'destructive'} className="text-xs">
-                        {attempt.score_pct}% · {attempt.passed ? 'Passed' : 'Failed'}
-                      </Badge>
-                      <Link to={`/student/results`} className="ml-auto">
-                        <Button size="sm" variant="outline">View Result</Button>
-                      </Link>
-                    </div>
-                  ) : inProgress ? (
+                  {inProgress ? (
                     <Link to={`/student/exams/${exam.id}/session`}>
                       <Button size="sm" className="w-full bg-orange-500 hover:bg-orange-600">Continue Exam</Button>
                     </Link>
+                  ) : completed && exhausted ? (
+                    <p className="text-sm text-gray-500 text-center py-1">Completed</p>
+                  ) : completed && !exhausted ? (
+                    <div className="space-y-2">
+                      <Link to={`/student/exams/${exam.id}`}>
+                        <Button size="sm" variant="outline" className="w-full">
+                          Retake Exam ({max - count} left)
+                        </Button>
+                      </Link>
+                    </div>
                   ) : notStarted ? (
                     <Button size="sm" className="w-full" disabled>
                       Starts {formatDate(exam.starts_at)}

@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, BookOpen, ClipboardCheck, LogOut, GraduationCap } from 'lucide-react'
+import { LayoutDashboard, BookOpen, LogOut, GraduationCap, UserCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { db } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
@@ -7,7 +7,7 @@ import { useAuthStore } from '@/store/authStore'
 const links = [
   { to: '/student',         label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/student/exams',   label: 'Exams',     icon: BookOpen },
-  { to: '/student/results', label: 'My Results',icon: ClipboardCheck },
+  { to: '/student/profile', label: 'Profile',   icon: UserCircle },
 ]
 
 interface Props {

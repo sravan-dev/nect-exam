@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Loader2, CheckCircle, XCircle } from 'lucide-react'
+import { Loader2, CheckCircle, XCircle, Trash2 } from 'lucide-react'
 import { db } from '@/lib/api'
 import { AdminResultsSkeleton } from '@/components/skeletons'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
+import { toast } from '@/hooks/useToast'
 
 interface Row {
   id: string
@@ -21,6 +22,14 @@ interface Row {
 export default function ResultsPage() {
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
+
+  const deleteAttempt = async (id: string) => {
+    if (!confirm('Delete this attempt?')) return
+    const { error } = await db.from('attempts').delete().eq('id', id)
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
+    setRows((r) => r.filter((x) => x.id !== id))
+    toast({ title: 'Attempt deleted' })
+  }
 
   useEffect(() => {
     db.from('attempts')
@@ -80,6 +89,14 @@ export default function ResultsPage() {
                         <Link to={`/admin/attempts/${r.id}/grade`}>
                           <Button size="sm" variant="outline">Review</Button>
                         </Link>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-400 hover:text-red-600 hover:bg-red-50 ml-1"
+                          onClick={() => deleteAttempt(r.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </td>
                     </tr>
                   ))}

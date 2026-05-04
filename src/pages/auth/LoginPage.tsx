@@ -72,8 +72,7 @@ export default function LoginPage() {
             </Button>
           </form>
           <p className="mt-4 text-center text-sm text-muted-foreground">
-            Don&apos;t have an account?{' '}
-            <Link to="/register" className="text-blue-600 hover:underline font-medium">Sign up</Link>
+            <Link to="/forgot-password" className="text-blue-600 hover:underline font-medium">Forgot password?</Link>
           </p>
         </CardContent>
       </Card>

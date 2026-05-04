@@ -201,6 +201,20 @@ const auth = {
     })
   },
 
+  async forgotPassword(email: string) {
+    return apiFetch('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    })
+  },
+
+  async resetPassword(token: string, password: string) {
+    return apiFetch('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    })
+  },
+
   async signOut() {
     clearToken()
     const { useAuthStore } = await import('@/store/authStore')

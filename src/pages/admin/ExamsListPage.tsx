@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   FileText, Pencil, Trash2, Loader2, Plus, Search,
-  Users, BarChart2, Filter,
+  Users, BarChart2, Filter, CheckSquare,
 } from 'lucide-react'
 import { db } from '@/lib/api'
 import type { Exam, Course, Trade } from '@/types/app.types'
@@ -32,6 +32,8 @@ export default function ExamsListPage() {
   const [tradeId,  setTradeId]  = useState('all')
   const [trades,   setTrades]   = useState<Trade[]>([])
   const [courses,  setCourses]  = useState<Course[]>([])
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
 
   const fetchData = async () => {
     setLoading(true)
@@ -108,7 +110,36 @@ export default function ExamsListPage() {
     const { error } = await db.from('exams').delete().eq('id', id)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     setExams((e) => e.filter((x) => x.id !== id))
+    setSelected((s) => { const n = new Set(s); n.delete(id); return n })
     toast({ title: 'Exam deleted' })
+  }
+
+  const deleteSelected = async () => {
+    if (!confirm(`Delete ${selected.size} exam${selected.size !== 1 ? 's' : ''} and all their questions?`)) return
+    setDeleting(true)
+    const ids = Array.from(selected)
+    const { error } = await db.from('exams').delete().in('id', ids)
+    setDeleting(false)
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
+    setExams((e) => e.filter((x) => !selected.has(x.id)))
+    setSelected(new Set())
+    toast({ title: `${ids.length} exam${ids.length !== 1 ? 's' : ''} deleted` })
+  }
+
+  const toggleAll = () => {
+    if (selected.size === filtered.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(filtered.map((e) => e.id)))
+    }
+  }
+
+  const toggleOne = (id: string) => {
+    setSelected((s) => {
+      const n = new Set(s)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
   }
 
   const STATUS_OPTIONS: { value: ExamStatus; label: string }[] = [
@@ -132,12 +163,26 @@ export default function ExamsListPage() {
             {filtered.length !== exams.length && ` of ${exams.length}`}
           </p>
         </div>
-        <Button onClick={createExam} disabled={creating}>
-          {creating
-            ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            : <Plus className="mr-2 h-4 w-4" />}
-          New Exam
-        </Button>
+        <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <Button
+              variant="destructive"
+              onClick={deleteSelected}
+              disabled={deleting}
+            >
+              {deleting
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <Trash2 className="mr-2 h-4 w-4" />}
+              Delete {selected.size} selected
+            </Button>
+          )}
+          <Button onClick={createExam} disabled={creating}>
+            {creating
+              ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              : <Plus className="mr-2 h-4 w-4" />}
+            New Exam
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -192,6 +237,14 @@ export default function ExamsListPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="px-5 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    className="rounded"
+                    checked={filtered.length > 0 && selected.size === filtered.length}
+                    onChange={toggleAll}
+                  />
+                </th>
                 <th className="text-left px-5 py-3 font-medium text-gray-600">Exam</th>
                 <th className="text-left px-5 py-3 font-medium text-gray-600">Course / Trade</th>
                 <th className="text-left px-5 py-3 font-medium text-gray-600">Status</th>
@@ -201,7 +254,15 @@ export default function ExamsListPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.map((exam) => (
-                <tr key={exam.id} className="hover:bg-gray-50 transition-colors group">
+                <tr key={exam.id} className={`hover:bg-gray-50 transition-colors group ${selected.has(exam.id) ? 'bg-blue-50' : ''}`}>
+                  <td className="px-5 py-3.5 w-10">
+                    <input
+                      type="checkbox"
+                      className="rounded"
+                      checked={selected.has(exam.id)}
+                      onChange={() => toggleOne(exam.id)}
+                    />
+                  </td>
                   {/* Exam title */}
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">

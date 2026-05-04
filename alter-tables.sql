@@ -13,3 +13,12 @@ ALTER TABLE profiles
   ADD COLUMN mobile      VARCHAR(20)  AFTER pin_code,
   ADD COLUMN course_id   CHAR(36)     AFTER mobile,
   ADD COLUMN reference   VARCHAR(255) AFTER course_id;
+
+-- Password reset tokens
+ALTER TABLE profiles
+  ADD COLUMN reset_token        VARCHAR(64) DEFAULT NULL AFTER password_hash,
+  ADD COLUMN reset_token_expiry DATETIME    DEFAULT NULL AFTER reset_token;
+
+-- Attempt limits per assignment
+ALTER TABLE exam_assignments
+  ADD COLUMN max_attempts INT NOT NULL DEFAULT 1 AFTER student_id;

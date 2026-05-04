@@ -271,15 +271,18 @@ export interface Database {
           id: string
           exam_id: string
           student_id: string
+          max_attempts: number
           assigned_at: string
         }
         Insert: {
           id?: string
           exam_id: string
           student_id: string
+          max_attempts?: number
           assigned_at?: string
         }
         Update: {
+          max_attempts?: number
           assigned_at?: string
         }
       }

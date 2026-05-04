@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Loader2, Users, Globe, Lock } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Loader2, Users, Globe, Lock, RefreshCw } from 'lucide-react'
 import { db } from '@/lib/api'
 import type { Exam, Profile, ExamAssignment } from '@/types/app.types'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,9 @@ export default function ExamAssignPage() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [assigning, setAssigning] = useState<string | null>(null)
+  const [rewriting, setRewriting] = useState<string | null>(null)
+  const [maxAttemptsMap, setMaxAttemptsMap] = useState<Record<string, number>>({})
+  const [attemptCounts, setAttemptCounts] = useState<Record<string, number>>({})
 
   const filteredStudents = students.filter((s) =>
     !assignments.find((a) => a.student_id === s.id) &&
@@ -26,14 +29,21 @@ export default function ExamAssignPage() {
 
   const fetchData = async () => {
     if (!examId) return
-    const [examRes, assignRes, studentRes] = await Promise.all([
+    const [examRes, assignRes, studentRes, attemptsRes] = await Promise.all([
       db.from('exams').select('*').eq('id', examId).single(),
       db.from('exam_assignments').select('*, profiles(*)').eq('exam_id', examId),
       db.from('profiles').select('*').eq('role', 'student').order('full_name'),
+      db.from('attempts').select('*').eq('exam_id', examId),
     ])
     setExam(examRes.data)
     setAssignments((assignRes.data ?? []) as (ExamAssignment & { profiles: Profile })[])
     setStudents(studentRes.data ?? [])
+
+    const counts: Record<string, number> = {}
+    ;(attemptsRes.data ?? []).forEach((a: { student_id: string }) => {
+      counts[a.student_id] = (counts[a.student_id] ?? 0) + 1
+    })
+    setAttemptCounts(counts)
     setLoading(false)
   }
 
@@ -49,7 +59,12 @@ export default function ExamAssignPage() {
 
   const assignStudent = async (studentId: string) => {
     setAssigning(studentId)
-    const { error } = await db.from('exam_assignments').insert({ exam_id: examId!, student_id: studentId })
+    const maxAttempts = maxAttemptsMap[studentId] ?? 1
+    const { error } = await db.from('exam_assignments').insert({
+      exam_id: examId!,
+      student_id: studentId,
+      max_attempts: maxAttempts,
+    })
     setAssigning(null)
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
     fetchData()
@@ -60,6 +75,15 @@ export default function ExamAssignPage() {
     await db.from('exam_assignments').delete().eq('id', assignId)
     setAssignments((a) => a.filter((x) => x.id !== assignId))
     toast({ title: 'Assignment removed' })
+  }
+
+  const grantRewrite = async (assignId: string, currentMax: number) => {
+    setRewriting(assignId)
+    const { error } = await db.from('exam_assignments').update({ max_attempts: currentMax + 1 }).eq('id', assignId)
+    setRewriting(null)
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return }
+    fetchData()
+    toast({ title: 'Rewrite granted — +1 attempt added.' })
   }
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>
@@ -112,17 +136,41 @@ export default function ExamAssignPage() {
             <p className="text-sm text-muted-foreground text-center py-4">No students assigned yet</p>
           ) : (
             <div className="space-y-2">
-              {assignments.map((a) => (
-                <div key={a.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{a.profiles?.full_name || '—'}</p>
-                    <p className="text-xs text-gray-400">{a.profiles?.email}</p>
+              {assignments.map((a) => {
+                const used = attemptCounts[a.student_id] ?? 0
+                const max = a.max_attempts ?? 1
+                const exhausted = used >= max
+                return (
+                  <div key={a.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{a.profiles?.full_name || '—'}</p>
+                      <p className="text-xs text-gray-400">{a.profiles?.email}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Attempts: <span className={exhausted ? 'text-red-500 font-medium' : 'text-gray-600'}>{used}/{max}</span>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {exhausted && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                          onClick={() => grantRewrite(a.id, max)}
+                          disabled={rewriting === a.id}
+                        >
+                          {rewriting === a.id
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <><RefreshCw className="h-3.5 w-3.5 mr-1" />Rewrite ({used})</>
+                          }
+                        </Button>
+                      )}
+                      <Button size="sm" variant="ghost" className="text-red-500" onClick={() => removeAssignment(a.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <Button size="sm" variant="ghost" className="text-red-500" onClick={() => removeAssignment(a.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
@@ -150,9 +198,27 @@ export default function ExamAssignPage() {
                     <p className="text-sm font-medium text-gray-900">{student.full_name || '—'}</p>
                     <p className="text-xs text-gray-400">{student.email}</p>
                   </div>
-                  <Button size="sm" onClick={() => assignStudent(student.id)} disabled={assigning === student.id}>
-                    {assigning === student.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign'}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500 whitespace-nowrap">No. of Attempts:</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={maxAttemptsMap[student.id] ?? 1}
+                        onChange={(e) =>
+                          setMaxAttemptsMap((m) => ({
+                            ...m,
+                            [student.id]: Math.max(1, parseInt(e.target.value) || 1),
+                          }))
+                        }
+                        className="w-14 text-center text-sm border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </div>
+                    <Button size="sm" onClick={() => assignStudent(student.id)} disabled={assigning === student.id}>
+                      {assigning === student.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign'}
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>

@@ -310,6 +310,55 @@ function handle_register(): void {
     respond(['message' => 'Account created'], 201);
 }
 
+function handle_forgot_password(): void {
+    global $pdo;
+    $b = body();
+    if (empty($b['email'])) respond(['message' => 'Email required'], 400);
+
+    $st = $pdo->prepare('SELECT id, full_name FROM profiles WHERE email = ?');
+    $st->execute([$b['email']]);
+    $p = $st->fetch();
+
+    // Respond success regardless to prevent email enumeration
+    if (!$p) respond(['message' => 'If that email is registered, a reset link has been sent.']);
+
+    $token  = bin2hex(random_bytes(32));
+    $expiry = date('Y-m-d H:i:s', time() + 3600);
+
+    $pdo->prepare('UPDATE profiles SET reset_token = ?, reset_token_expiry = ? WHERE id = ?')
+        ->execute([$token, $expiry, $p['id']]);
+
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $link   = "$scheme://$host/reset-password?token=$token";
+    $name   = $p['full_name'] ?: 'User';
+
+    $subject = 'NECT Exam – Password Reset Request';
+    $message = "Hello $name,\r\n\r\nClick the link below to reset your password (valid for 1 hour):\r\n\r\n$link\r\n\r\nIf you did not request this, please ignore this email.\r\n\r\nNECT Exam Team";
+    $headers  = "From: noreply@$host\r\nContent-Type: text/plain; charset=utf-8";
+
+    mail($b['email'], $subject, $message, $headers);
+
+    respond(['message' => 'If that email is registered, a reset link has been sent.']);
+}
+
+function handle_reset_password(): void {
+    global $pdo;
+    $b = body();
+    if (empty($b['token']) || empty($b['password'])) respond(['message' => 'Token and password required'], 400);
+    if (strlen($b['password']) < 6) respond(['message' => 'Password must be at least 6 characters'], 400);
+
+    $st = $pdo->prepare('SELECT id FROM profiles WHERE reset_token = ? AND reset_token_expiry > NOW()');
+    $st->execute([$b['token']]);
+    $p = $st->fetch();
+    if (!$p) respond(['message' => 'Invalid or expired reset link'], 400);
+
+    $pdo->prepare('UPDATE profiles SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?')
+        ->execute([password_hash($b['password'], PASSWORD_BCRYPT), $p['id']]);
+
+    respond(['message' => 'Password reset successfully']);
+}
+
 function handle_me(): void {
     global $pdo;
     $user = auth_required();
@@ -602,10 +651,12 @@ if ($base_path && str_starts_with($uri, $base_path)) {
     $uri = substr($uri, strlen($base_path)) ?: '/';
 }
 
-if ($uri === '/auth/login'    && $method === 'POST')  handle_login();
-if ($uri === '/auth/register' && $method === 'POST')  handle_register();
-if ($uri === '/auth/me'       && $method === 'GET')   handle_me();
-if ($uri === '/auth/logout'   && $method === 'POST')  respond(['message' => 'Logged out']);
+if ($uri === '/auth/login'            && $method === 'POST')  handle_login();
+if ($uri === '/auth/register'         && $method === 'POST')  handle_register();
+if ($uri === '/auth/forgot-password'  && $method === 'POST')  handle_forgot_password();
+if ($uri === '/auth/reset-password'   && $method === 'POST')  handle_reset_password();
+if ($uri === '/auth/me'               && $method === 'GET')   handle_me();
+if ($uri === '/auth/logout'           && $method === 'POST')  respond(['message' => 'Logged out']);
 if ($uri === '/upload'        && $method === 'POST')  handle_upload();
 if ($uri === '/health' && $method === 'GET') {
     try { $pdo->query('SELECT 1'); respond(['status' => 'ok', 'db' => 'connected']); }
